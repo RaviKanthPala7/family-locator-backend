@@ -284,3 +284,35 @@ def get_latest_location(email: str, token: str = Depends(oauth2_scheme), db: Ses
         raise HTTPException(status_code=404, detail="No location available")
 
     return latest_location
+
+
+@app.get("/followed-users")
+def get_followed_users(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(status_code=401, detail="Could not validate credentials")
+
+    try:
+        # Extract user email from the token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        user = db.query(models.User).filter(models.User.email == user_email).first()
+        if user is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    # Fetch the list of followed user IDs
+    followed_ids = db.query(models.Follow.followed_id).filter(models.Follow.follower_id == user.id).all()
+    
+    # Extract IDs from the query result
+    followed_ids = [fid[0] for fid in followed_ids]
+
+    if not followed_ids:
+        return {"followed_users": []}
+
+    # Fetch emails of followed users
+    followed_users = db.query(models.User.email).filter(models.User.id.in_(followed_ids)).all()
+
+    # Convert result to a list of emails
+    followed_emails = [user[0] for user in followed_users]
+
+    return {"followed_users": followed_emails}
